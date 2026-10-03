@@ -18,5 +18,16 @@ def get_all():
     return jsonify(inventory), 200
 
 
+def find_item(item_id):
+    return next((i for i in inventory if i["id"] == item_id), None)
+
+
+@app.get("/inventory/<int:item_id>")
+def get_one(item_id):
+    item = find_item(item_id)
+    if item is None:
+        return jsonify({"error": "item not found"}), 404
+    return jsonify(item), 200
+
 if __name__ == "__main__":
     app.run(debug=True)
