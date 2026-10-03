@@ -1,5 +1,7 @@
 from flask import Flask, jsonify, request
 
+from off_client import OpenFoodFactsError, fetch_by_barcode, search_by_name
+
 app = Flask(__name__)
 
 # Mock database: a list of dictionaries
@@ -38,7 +40,25 @@ def validate_numbers(data):
     return None
 
 
-# ---------- routes ----------
+def lookup_external(data):
+    """Look a product up on OpenFoodFacts by barcode or name.
+    Returns (product, error_response); one of the two is always None."""
+    try:
+        if data.get("barcode"):
+            product = fetch_by_barcode(data["barcode"])
+        elif data.get("name"):
+            product = search_by_name(data["name"])
+        else:
+            return None, (jsonify({"error": "provide a 'barcode' or 'name'"}), 400)
+    except OpenFoodFactsError as exc:
+        return None, (jsonify({"error": str(exc)}), 502)
+
+    if product is None:
+        return None, (jsonify({"error": "product not found on OpenFoodFacts"}), 404)
+    return product, None
+
+
+# ---------- CRUD routes ----------
 @app.get("/inventory")
 def get_all():
     return jsonify(inventory), 200
@@ -105,6 +125,39 @@ def delete_item(item_id):
 
     inventory.remove(item)
     return jsonify({"message": "item deleted", "item": item}), 200
+
+
+# ---------- helper routes (OpenFoodFacts) ----------
+@app.get("/lookup")
+def lookup():
+    """Preview a product from OpenFoodFacts without saving it."""
+    product, err = lookup_external(request.args)
+    if err:
+        return err
+    return jsonify(product), 200
+
+
+@app.post("/inventory/import")
+def import_item():
+    """Fetch a product from OpenFoodFacts and add it to the inventory."""
+    data = request.get_json(silent=True) or {}
+    product, err = lookup_external(data)
+    if err:
+        return err
+
+    extra = {k: data[k] for k in ("price", "stock") if k in data}
+    problem = validate_numbers(extra)
+    if problem:
+        return jsonify({"error": problem}), 400
+
+    item = {
+        "id": next_id(),
+        **product,
+        "price": extra.get("price", 0),
+        "stock": extra.get("stock", 0),
+    }
+    inventory.append(item)
+    return jsonify(item), 201
 
 
 if __name__ == "__main__":
