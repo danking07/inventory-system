@@ -54,6 +54,26 @@ def create_item():
     inventory.append(item)
     return jsonify(item), 201
 
+EDITABLE_FIELDS = {"product_name", "brands", "ingredients_text",
+                   "barcode", "price", "stock"}
+
+
+@app.patch("/inventory/<int:item_id>")
+def update_item(item_id):
+    item = find_item(item_id)
+    if item is None:
+        return jsonify({"error": "item not found"}), 404
+
+    data = request.get_json(silent=True)
+    if not data:
+        return jsonify({"error": "no data provided"}), 400
+
+    unknown = set(data) - EDITABLE_FIELDS
+    if unknown:
+        return jsonify({"error": f"cannot update: {', '.join(sorted(unknown))}"}), 400
+
+    item.update(data)
+    return jsonify(item), 200
 
 if __name__ == "__main__":
     app.run(debug=True)
