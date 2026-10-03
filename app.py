@@ -12,6 +12,9 @@ inventory = [
      "barcode": "0051500240144", "price": 3.49, "stock": 35},
 ]
 
+EDITABLE_FIELDS = {"product_name", "brands", "ingredients_text",
+                   "barcode", "price", "stock"}
+
 
 # ---------- helpers ----------
 def find_item(item_id):
@@ -20,6 +23,19 @@ def find_item(item_id):
 
 def next_id():
     return max((item["id"] for item in inventory), default=0) + 1
+
+
+def validate_numbers(data):
+    """Return an error message if price/stock are invalid, otherwise None."""
+    if "price" in data:
+        price = data["price"]
+        if isinstance(price, bool) or not isinstance(price, (int, float)) or price < 0:
+            return "price must be a number >= 0"
+    if "stock" in data:
+        stock = data["stock"]
+        if isinstance(stock, bool) or not isinstance(stock, int) or stock < 0:
+            return "stock must be a whole number >= 0"
+    return None
 
 
 # ---------- routes ----------
@@ -42,6 +58,10 @@ def create_item():
     if not data or not data.get("product_name"):
         return jsonify({"error": "product_name is required"}), 400
 
+    problem = validate_numbers(data)
+    if problem:
+        return jsonify({"error": problem}), 400
+
     item = {
         "id": next_id(),
         "product_name": data["product_name"],
@@ -53,9 +73,6 @@ def create_item():
     }
     inventory.append(item)
     return jsonify(item), 201
-
-EDITABLE_FIELDS = {"product_name", "brands", "ingredients_text",
-                   "barcode", "price", "stock"}
 
 
 @app.patch("/inventory/<int:item_id>")
@@ -72,8 +89,23 @@ def update_item(item_id):
     if unknown:
         return jsonify({"error": f"cannot update: {', '.join(sorted(unknown))}"}), 400
 
+    problem = validate_numbers(data)
+    if problem:
+        return jsonify({"error": problem}), 400
+
     item.update(data)
     return jsonify(item), 200
+
+
+@app.delete("/inventory/<int:item_id>")
+def delete_item(item_id):
+    item = find_item(item_id)
+    if item is None:
+        return jsonify({"error": "item not found"}), 404
+
+    inventory.remove(item)
+    return jsonify({"message": "item deleted", "item": item}), 200
+
 
 if __name__ == "__main__":
     app.run(debug=True)
